@@ -122,31 +122,35 @@ def build_translate_prompt(text, target_lang, source_lang="auto"):
 async def call_ai(text, target_lang, source_lang="auto"):
     prompt = build_translate_prompt(text, target_lang, source_lang)
     try:
+        # Шаг 1: Перевод
         response = client.messages.create(
             model=MODEL,
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.content[0].text
+        translation = response.content[0].text
+
+        # Шаг 2: Проверка и исправление
+        check_prompt = (
+            "You are a proofreader for academic texts. Check the following translation and fix ANY errors:\n"
+            "- Fix spelling mistakes\n"
+            "- Fix grammar errors\n"
+            "- If Uzbek Latin text: make sure there are NO Cyrillic letters mixed in, apostrophes in o' and g' are correct\n"
+            "- If Russian text: make sure there are NO Latin letters mixed in\n"
+            "- Fix punctuation\n\n"
+            "Output ONLY the corrected text. If the text is already perfect, output it unchanged. NO comments or notes.\n\n"
+            + translation
+        )
+        check_response = client.messages.create(
+            model=MODEL,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": check_prompt}],
+        )
+        return check_response.content[0].text
     except Exception as exc:
         logger.error("API error: %s", exc)
-        return "Xatolik yuz berdi. Iltimos qayta urinib ko'ring. / Proizoshla oshibka. Poprobuite eshchyo raz."
-
-
-async def detect_language(text):
-    try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=10,
-            messages=[{
-                "role": "user",
-                "content": "Detect the language of the following text. Reply with ONLY the ISO 639-1 two-letter code (e.g. 'uz', 'ru', 'en', 'de'). For Uzbek (both Latin and Cyrillic script) reply 'uz'. Nothing else.\n\n\"" + text[:300] + "\"",
-            }],
-        )
-        return response.content[0].text.strip().lower()[:2]
-    except Exception:
-        return "unknown"
+        return "Xatolik yuz berdi. Qayta urinib ko'ring. / Oshibka. Poprobuite snova."
 
 
 # --- Klaviatury ---
