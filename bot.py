@@ -135,7 +135,7 @@ async def handle_message(update, ctx):
     ):
         return
 
-    original_text = message.reply_to_message.text
+    original_text = message.reply_to_message.text_html
 
     if not original_text:
         await message.reply_text("Matn topilmadi")
@@ -156,9 +156,7 @@ async def handle_message(update, ctx):
         else:
             target_lang = "ru"
 
-    translation = await call_ai(original_text, target_lang)
-
-result = original_text + "\n\n〰️〰️〰️\n\n" + translation
+    result = await call_ai(original_text, target_lang)
 
     chunks = split_message(result)
 
