@@ -1,8 +1,3 @@
-"""
-Perevod UZ-RUS - Telegram-bot dlya akademicheskikh perevodov
-Ispolzuet Anthropic Claude API dlya perevodov universitetskogo kachestva.
-"""
-
 import os
 import logging
 
@@ -24,8 +19,6 @@ from telegram.constants import ChatAction
 
 import anthropic
 
-# --- Nastroyki ---
-
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 
@@ -37,8 +30,6 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-
-# --- Yazyki ---
 
 LANGUAGES = {
     "uz": "\U0001f1fa\U0001f1ff O'zbekcha",
@@ -82,8 +73,6 @@ def set_user_lang(user_id, lang_code):
     user_settings[user_id]["target_lang"] = lang_code
 
 
-# --- Prompt ---
-
 SYSTEM_PROMPT = (
     "You are an expert academic translator with PhD-level expertise in Uzbek and Russian linguistics. "
     "Your translations are used in official university publications, dissertations, and academic journals. "
@@ -122,7 +111,6 @@ def build_translate_prompt(text, target_lang, source_lang="auto"):
 async def call_ai(text, target_lang, source_lang="auto"):
     prompt = build_translate_prompt(text, target_lang, source_lang)
     try:
-        # Шаг 1: Перевод
         response = client.messages.create(
             model=MODEL,
             max_tokens=4096,
@@ -131,7 +119,6 @@ async def call_ai(text, target_lang, source_lang="auto"):
         )
         translation = response.content[0].text
 
-        # Шаг 2: Проверка и исправление
         check_prompt = (
             "You are a proofreader for academic texts. Check the following translation and fix ANY errors:\n"
             "- Fix spelling mistakes\n"
@@ -153,7 +140,20 @@ async def call_ai(text, target_lang, source_lang="auto"):
         return "Xatolik yuz berdi. Qayta urinib ko'ring. / Oshibka. Poprobuite snova."
 
 
-# --- Klaviatury ---
+async def detect_language(text):
+    try:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=10,
+            messages=[{
+                "role": "user",
+                "content": "Detect the language. Reply with ONLY the ISO 639-1 two-letter code. For Uzbek reply 'uz'. Nothing else.\n\n" + text[:300],
+            }],
+        )
+        return response.content[0].text.strip().lower()[:2]
+    except Exception:
+        return "unknown"
+
 
 def lang_keyboard(prefix="translate"):
     buttons = [
@@ -166,11 +166,9 @@ def lang_keyboard(prefix="translate"):
 
 def after_translate_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Boshqa tilga tarjima qilish / Drugoy yazyk", callback_data="retry")]
+        [InlineKeyboardButton("Boshqa tilga / Drugoy yazyk", callback_data="retry")]
     ])
 
-
-# --- Hendlery ---
 
 async def cmd_start(update, ctx):
     await update.message.reply_text(
@@ -195,12 +193,10 @@ async def cmd_help(update, ctx):
     await update.message.reply_text(
         "Yordam / Spravka\n\n"
         "1. Matn yuboring \u2014 bot tilni aniqlaydi va tarjima qiladi.\n"
-        "   O'zbekcha \u2192 ruscha, ruscha \u2192 o'zbekcha.\n\n"
-        "2. Tugmalar \u2014 tarjimadan keyin boshqa tilni tanlash mumkin.\n\n"
-        "3. /lang \u2014 doimiy maqsad tilni o'rnatish.\n\n"
+        "2. Tugmalar \u2014 tarjimadan keyin boshqa tilni tanlash mumkin.\n"
+        "3. /lang \u2014 doimiy maqsad tilni o'rnatish.\n"
         "4. /reset \u2014 avtomatik rejimga qaytish.\n\n"
-        "Joriy til: " + lang_str + "\n\n"
-        "Har bir tarjima tarjimon izohlari bilan birga keladi.",
+        "Joriy til: " + lang_str,
     )
 
 
@@ -295,8 +291,6 @@ async def callback_handler(update, ctx):
         return
 
 
-# --- Utility ---
-
 def split_message(text, max_len=4000):
     if len(text) <= max_len:
         return [text]
@@ -314,8 +308,6 @@ def split_message(text, max_len=4000):
         text = text[cut:].lstrip("\n")
     return chunks
 
-
-# --- Zapusk ---
 
 async def post_init(app):
     await app.bot.set_my_commands([
