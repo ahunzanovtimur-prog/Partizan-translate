@@ -38,8 +38,12 @@ LANGUAGES = {
 
 user_settings = {}
 
+SEPARATOR = "\n\n〰️〰️〰️\n\n"
+
+
 def get_user_lang(user_id):
     return user_settings.get(user_id, {}).get("target_lang")
+
 
 def set_user_lang(user_id, lang_code):
     if user_id not in user_settings:
@@ -85,7 +89,6 @@ async def detect_language(text):
 
     text_lower = text.lower()
 
-    # простое определение языка
     if any(c in text_lower for c in "қғҳў"):
         return "uz"
 
@@ -128,7 +131,6 @@ async def handle_message(update, ctx):
     if not text:
         return
 
-    # работает только reply + команда
     if not (
         message.reply_to_message
         and text.lower().strip() in ["tr", "translate", "перевод", "tarjima"]
@@ -156,9 +158,17 @@ async def handle_message(update, ctx):
         else:
             target_lang = "ru"
 
-    result = await call_ai(original_text, target_lang)
+    translation = await call_ai(original_text, target_lang)
 
-    chunks = split_message(result)
+    # Всегда: сначала узб, потом рус
+    if target_lang == "ru":
+        # оригинал = узб, перевод = рус
+        combined = original_text + SEPARATOR + translation
+    else:
+        # оригинал = рус, перевод = узб → переворачиваем
+        combined = translation + SEPARATOR + original_text
+
+    chunks = split_message(combined)
 
     for i, chunk in enumerate(chunks):
 
