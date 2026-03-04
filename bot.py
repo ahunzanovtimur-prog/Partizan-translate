@@ -225,12 +225,50 @@ async def cmd_reset(update, ctx):
 
 
 async def handle_message(update, ctx):
-    text = update.message.text
-    if not text or len(text.strip()) < 2:
+
+    message = update.message
+    text = message.text
+
+    if not text or len(text.strip()) < 1:
+        return
+
+    # 🔹 перевод если ответили на сообщение и написали "tr"
+    if message.reply_to_message and text.lower() == "tr":
+
+        original_text = message.reply_to_message.text
+
+        if not original_text:
+            await message.reply_text("Нет текста для перевода")
+            return
+
+        user_id = update.effective_user.id
+        await message.chat.send_action(ChatAction.TYPING)
+
+        target_lang = get_user_lang(user_id)
+
+        if target_lang:
+            result = await call_ai(original_text, target_lang)
+        else:
+            detected = await detect_language(original_text)
+            target_lang = AUTO_PAIRS.get(detected, "ru")
+            result = await call_ai(original_text, target_lang, source_lang=detected)
+
+        chunks = split_message(result)
+        for i, chunk in enumerate(chunks):
+            kwargs = {}
+            if i == len(chunks) - 1:
+                kwargs["reply_markup"] = after_translate_keyboard()
+            await message.reply_text(chunk, **kwargs)
+
+        ctx.user_data["last_text"] = original_text
+        return
+
+    # 🔹 обычный перевод как у тебя был
+    if len(text.strip()) < 2:
         return
 
     user_id = update.effective_user.id
-    await update.message.chat.send_action(ChatAction.TYPING)
+    await message.chat.send_action(ChatAction.TYPING)
 
     target_lang = get_user_lang(user_id)
 
@@ -246,10 +284,9 @@ async def handle_message(update, ctx):
         kwargs = {}
         if i == len(chunks) - 1:
             kwargs["reply_markup"] = after_translate_keyboard()
-        await update.message.reply_text(chunk, **kwargs)
+        await message.reply_text(chunk, **kwargs)
 
     ctx.user_data["last_text"] = text
-
 
 async def callback_handler(update, ctx):
     query = update.callback_query
