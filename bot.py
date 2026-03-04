@@ -233,7 +233,7 @@ async def handle_message(update, ctx):
         return
 
     # ✅ работать только если это ответ на сообщение и написано "tr"
-    if not (message.reply_to_message and text.lower().strip() == "tr"):
+    if not (message.reply_to_message and text.lower().strip() in ["tr", "translate", "перевод", "tarjima"]):
         return
 
     original_text = message.reply_to_message.text
