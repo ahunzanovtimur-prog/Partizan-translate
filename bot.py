@@ -31,42 +31,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 LANGUAGES = {
     "uz": "🇺🇿 O'zbekcha",
     "ru": "🇷🇺 Russkiy",
-    "en": "🇬🇧 English",
-    "de": "🇩🇪 Deutsch",
-    "fr": "🇫🇷 Francais",
-    "es": "🇪🇸 Espanol",
-    "it": "🇮🇹 Italiano",
-    "pt": "🇵🇹 Portugues",
-    "zh": "🇨🇳 Zhongwen",
-    "ja": "🇯🇵 Nihongo",
-    "ko": "🇰🇷 Hangugeo",
-    "ar": "🇸🇦 Al-Arabiyyah",
-    "tr": "🇹🇷 Turkce",
-    "pl": "🇵🇱 Polski",
-    "uk": "🇺🇦 Ukrainska",
-}
-
-AUTO_PAIRS = {
-    "uz": "ru",
-    "ru": "uz",
-    "en": "ru",
-    "de": "ru",
-    "fr": "ru",
-    "es": "ru",
-    "ja": "ru",
-    "zh": "ru",
 }
 
 user_settings = {}
 
-
 def get_user_lang(user_id):
     return user_settings.get(user_id, {}).get("target_lang")
-
 
 def set_user_lang(user_id, lang_code):
     if user_id not in user_settings:
@@ -75,27 +48,21 @@ def set_user_lang(user_id, lang_code):
 
 
 SYSTEM_PROMPT = (
-    "You are an expert academic translator.\n\n"
-    "IMPORTANT:\n"
-    "- Preserve ALL HTML formatting exactly (<b>, <i>, <blockquote>, <a>, etc)\n"
-    "- Preserve ALL emojis exactly\n"
-    "- Keep paragraph structure identical\n"
-    "- Output ONLY the translated text\n"
+    "You are a professional academic translator between Russian and Uzbek.\n"
+    "Output ONLY the translated text."
 )
 
 
-def build_translate_prompt(text, target_lang, source_lang="auto"):
-    target_name = LANGUAGES.get(target_lang, target_lang)
-
-    if source_lang != "auto":
-        source_name = LANGUAGES.get(source_lang, source_lang)
-        return f"Translate from {source_name} into {target_name}. Preserve HTML formatting.\n\n{text}"
-
-    return f"Translate into {target_name}. Preserve HTML formatting.\n\n{text}"
+def build_translate_prompt(text, target_lang):
+    if target_lang == "ru":
+        return "Translate into Russian.\n\n" + text
+    if target_lang == "uz":
+        return "Translate into Uzbek Latin.\n\n" + text
 
 
-async def call_ai(text, target_lang, source_lang="auto"):
-    prompt = build_translate_prompt(text, target_lang, source_lang)
+async def call_ai(text, target_lang):
+
+    prompt = build_translate_prompt(text, target_lang)
 
     try:
         response = client.messages.create(
@@ -114,35 +81,19 @@ async def call_ai(text, target_lang, source_lang="auto"):
 
 async def detect_language(text):
 
-    try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=10,
-            messages=[{
-                "role": "user",
-                "content": "Detect language ISO code.\n\n" + text[:200],
-            }],
-        )
+    text_lower = text.lower()
 
-        return response.content[0].text.strip().lower()[:2]
+    # простое определение языка
+    if any(c in text_lower for c in "қғҳў"):
+        return "uz"
 
-    except:
-        return "unknown"
+    if any(c in text_lower for c in "абвгдеёжзийклмнопрстуфхцчшщыэюя"):
+        return "ru"
 
-
-def lang_keyboard(prefix="translate"):
-    buttons = [
-        InlineKeyboardButton(name, callback_data=f"{prefix}:{code}")
-        for code, name in LANGUAGES.items()
-    ]
-
-    rows = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
-
-    return InlineKeyboardMarkup(rows)
+    return "ru"
 
 
 def after_translate_keyboard():
-
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Boshqa tilga / Drugoy yazyk", callback_data="retry")]
     ])
@@ -151,16 +102,9 @@ def after_translate_keyboard():
 async def cmd_start(update, ctx):
 
     await update.message.reply_text(
-        "Akademik tarjimon bot\n\n"
-        "Reply qiling va 'tr' yozing tarjima uchun."
-    )
-
-
-async def cmd_lang(update, ctx):
-
-    await update.message.reply_text(
-        "Tilni tanlang:",
-        reply_markup=lang_keyboard(prefix="setlang"),
+        "Tarjimon bot\n\n"
+        "Matnga reply qiling va yozing:\n"
+        "tr / перевод / translate / tarjima"
     )
 
 
@@ -171,7 +115,7 @@ async def cmd_reset(update, ctx):
     if uid in user_settings:
         user_settings[uid].pop("target_lang", None)
 
-    await update.message.reply_text("Avto rejim qayta yoqildi.")
+    await update.message.reply_text("Avto tarjima qayta yoqildi.")
 
 
 async def handle_message(update, ctx):
@@ -182,32 +126,35 @@ async def handle_message(update, ctx):
     if not text:
         return
 
+    # работает только reply + команда
     if not (
         message.reply_to_message
         and text.lower().strip() in ["tr", "translate", "перевод", "tarjima"]
     ):
         return
 
-    original_text = message.reply_to_message.text_html_urled
+    original_text = message.reply_to_message.text
 
     if not original_text:
-        await message.reply_text("Tarjima uchun matn topilmadi")
+        await message.reply_text("Matn topilmadi")
         return
-
-    user_id = update.effective_user.id
 
     await message.chat.send_action(ChatAction.TYPING)
 
+    user_id = update.effective_user.id
+
     target_lang = get_user_lang(user_id)
 
-    if target_lang:
-        result = await call_ai(original_text, target_lang)
+    if not target_lang:
 
-    else:
         detected = await detect_language(original_text)
-        target_lang = AUTO_PAIRS.get(detected, "ru")
 
-        result = await call_ai(original_text, target_lang, source_lang=detected)
+        if detected == "ru":
+            target_lang = "uz"
+        else:
+            target_lang = "ru"
+
+    result = await call_ai(original_text, target_lang)
 
     chunks = split_message(result)
 
@@ -218,11 +165,7 @@ async def handle_message(update, ctx):
         if i == len(chunks) - 1:
             kwargs["reply_markup"] = after_translate_keyboard()
 
-        await message.reply_text(
-            chunk,
-            parse_mode="HTML",
-            **kwargs
-        )
+        await message.reply_text(chunk, **kwargs)
 
     ctx.user_data["last_text"] = original_text
 
@@ -230,55 +173,12 @@ async def handle_message(update, ctx):
 async def callback_handler(update, ctx):
 
     query = update.callback_query
-
     await query.answer()
 
-    data = query.data
-
-    if data == "retry":
+    if query.data == "retry":
 
         await query.message.reply_text(
-            "Tilni tanlang:",
-            reply_markup=lang_keyboard(prefix="translate"),
-        )
-
-        return
-
-    if data.startswith("translate:"):
-
-        lang_code = data.split(":")[1]
-
-        last_text = ctx.user_data.get("last_text")
-
-        if not last_text:
-            return
-
-        result = await call_ai(last_text, lang_code)
-
-        chunks = split_message(result)
-
-        for i, chunk in enumerate(chunks):
-
-            kwargs = {}
-
-            if i == len(chunks) - 1:
-                kwargs["reply_markup"] = after_translate_keyboard()
-
-            await query.message.reply_text(
-                chunk,
-                parse_mode="HTML",
-                **kwargs
-            )
-
-
-    if data.startswith("setlang:"):
-
-        lang_code = data.split(":")[1]
-
-        set_user_lang(query.from_user.id, lang_code)
-
-        await query.message.edit_text(
-            f"Til o'rnatildi: {LANGUAGES.get(lang_code)}"
+            "Reply qiling va yozing: tr"
         )
 
 
@@ -313,8 +213,7 @@ def split_message(text, max_len=4000):
 async def post_init(app):
 
     await app.bot.set_my_commands([
-        BotCommand("start", "Boshlash"),
-        BotCommand("lang", "Til tanlash"),
+        BotCommand("start", "Start"),
         BotCommand("reset", "Reset"),
     ])
 
@@ -329,7 +228,6 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("lang", cmd_lang))
     app.add_handler(CommandHandler("reset", cmd_reset))
 
     app.add_handler(CallbackQueryHandler(callback_handler))
