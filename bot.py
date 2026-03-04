@@ -135,7 +135,7 @@ async def handle_message(update, ctx):
     ):
         return
 
-    original_text = message.reply_to_message.text_html
+    original_text = message.reply_to_message.text
 
     if not original_text:
         await message.reply_text("Matn topilmadi")
