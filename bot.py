@@ -205,9 +205,16 @@ async def handle_message(update, ctx):
 
     else:
         detected = await detect_language(original_text)
-        target_lang = AUTO_PAIRS.get(detected, "ru")
 
-        result = await call_ai(original_text, target_lang, source_lang=detected)
+# жёсткая логика RU ↔ UZ
+if detected == "ru":
+    target_lang = "uz"
+elif detected == "uz":
+    target_lang = "ru"
+else:
+    target_lang = "ru"
+
+result = await call_ai(original_text, target_lang, source_lang=detected)
 
     chunks = split_message(result)
 
