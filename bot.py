@@ -156,7 +156,9 @@ async def handle_message(update, ctx):
         else:
             target_lang = "ru"
 
-    result = await call_ai(original_text, target_lang)
+    translation = await call_ai(original_text, target_lang)
+
+result = original_text + "\n\n〰️〰️〰️\n\n" + translation
 
     chunks = split_message(result)
 
