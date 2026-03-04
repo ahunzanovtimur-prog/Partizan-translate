@@ -49,6 +49,8 @@ def set_user_lang(user_id, lang_code):
 
 SYSTEM_PROMPT = (
     "You are a professional academic translator between Russian and Uzbek.\n"
+    "Preserve all emojis exactly.\n"
+    "Preserve HTML formatting tags like <b>, <i>, <blockquote>.\n"
     "Output ONLY the translated text."
 )
 
@@ -133,7 +135,7 @@ async def handle_message(update, ctx):
     ):
         return
 
-    original_text = message.reply_to_message.text
+    original_text = message.reply_to_message.text_html
 
     if not original_text:
         await message.reply_text("Matn topilmadi")
@@ -165,7 +167,7 @@ async def handle_message(update, ctx):
         if i == len(chunks) - 1:
             kwargs["reply_markup"] = after_translate_keyboard()
 
-        await message.reply_text(chunk, **kwargs)
+        await message.reply_text(chunk, parse_mode="HTML", **kwargs)
 
     ctx.user_data["last_text"] = original_text
 
