@@ -86,16 +86,18 @@ async def call_ai(text, target_lang):
 
 
 async def detect_language(text):
-
-    text_lower = text.lower()
-
-    if any(c in text_lower for c in "қғҳў"):
-        return "uz"
-
-    if any(c in text_lower for c in "абвгдеёжзийклмнопрстуфхцчшщыэюя"):
-        return "ru"
-
-    return "ru"
+    try:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=10,
+            messages=[{
+                "role": "user",
+                "content": "What language is this text written in? Reply with ONLY the ISO 639-1 code.\nRules:\n- Uzbek Latin (o'zbek, qilish, bo'ladi) = uz\n- Russian Cyrillic = ru\n- English = en\n- Reply ONLY the 2-letter code, nothing else.\n\n" + text[:500],
+            }],
+        )
+        return response.content[0].text.strip().lower()[:2]
+    except Exception:
+        return "unknown"
 
 
 def after_translate_keyboard():
