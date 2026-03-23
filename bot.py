@@ -131,7 +131,9 @@ async def call_ai(text, target_lang):
             temperature=0.2,
             messages=[{"role": "user", "content": CHECK_PROMPT + translation}],
         )
-        return check_response.content[0].text
+        result = check_response.content[0].text
+        result = result.replace("o'", "o\u02BB").replace("O'", "O\u02BB").replace("g'", "g\u02BB").replace("G'", "G\u02BB")
+        return result
     except Exception as exc:
         logger.error("API error: %s", exc)
         return "Tarjima xatosi / Oshibka perevoda"
