@@ -177,6 +177,7 @@ async def transcribe_voice(file_path):
             transcription = groq_client.audio.transcriptions.create(
                 model="whisper-large-v3",
                 file=audio_file,
+                language="uz",
             )
         return transcription.text
     except Exception as exc:
