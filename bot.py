@@ -171,6 +171,10 @@ async def call_ai(text, target_lang):
             messages=[{"role": "user", "content": CHECK_PROMPT + translation}],
         )
         result = check_response.content[0].text
+        # Convert Markdown bold to HTML bold
+        import re
+        translation = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', translation)
+        translation = re.sub(r'__(.+?)__', r'<i>\1</i>', translation)
         result = fix_uzbek_text(result)
         return result
     except Exception as exc:
