@@ -82,7 +82,13 @@ SYSTEM_PROMPT = (
     "- Use premium, elegant Uzbek phrasing for marketing/SMM texts\n"
     "- Avoid calques from Russian - rephrase naturally in Uzbek\n"
     "- For event/restaurant/hotel texts: use warm, inviting, premium language\n"
-    "- Think like a native Uzbek copywriter, not a translator\n\n"
+    "- Think like a native Uzbek copywriter, not a translator\n"
+    "- Numbers with postpositions use hyphen: 31-maygacha, 5-kursga, 10-martdan (NOT 31 maygacha)\n"
+    "- 'tejash/ekonomiya' -> 'foyda' in marketing context (sounds more appealing)\n"
+    "- 'real' -> 'haqiqiy' or 'amaliy' (avoid anglicisms)\n"
+    "- 'keys/kejs' -> 'holat' or 'misol' (use native Uzbek)\n"
+    "- 'kontakt' -> 'aloqa', 'format' -> 'shakl', 'prezentatsiya' -> 'taqdimot'\n"
+    "- Always prefer native Uzbek words over borrowed Russian/English words\n\n"
     "EXAMPLES:\n\n"
     "Input: TIUE sizni bayram bilan tabriklaymiz\n"
     "Output: TIUE sizni bayram bilan tabriklaydi\n\n"
@@ -110,7 +116,31 @@ CHECK_PROMPT = (
     "Output ONLY the corrected text. If perfect, output unchanged. NO comments.\n\n"
 )
 
-
+def fix_uzbek_text(text):
+    # Fix Turkish characters to Uzbek
+    replacements = {
+        "\u015f": "sh", "\u015e": "Sh",
+        "\u00e7": "ch", "\u00c7": "Ch",
+        "\u011f": "g\u02BB", "\u011e": "G\u02BB",
+        "\u0131": "i", "\u00f6": "o\u02BB", "\u00d6": "O\u02BB",
+        "\u00fc": "u", "\u00dc": "U",
+        "o'": "o\u02BB", "O'": "O\u02BB",
+        "g'": "g\u02BB", "G'": "G\u02BB",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    # Check if Uzbek text has Cyrillic mixed in - remove stray Cyrillic
+    import re
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        latin_count = len(re.findall(r'[a-zA-Z]', line))
+        cyrillic_count = len(re.findall(r'[\u0400-\u04FF]', line))
+        # If line is mostly Latin but has some Cyrillic, it is a bug
+        if latin_count > 0 and cyrillic_count > 0 and latin_count > cyrillic_count:
+            line = re.sub(r'[\u0400-\u04FF]+', '', line)
+        cleaned.append(line)
+    return "\n".join(cleaned)
 def build_translate_prompt(text, target_lang):
     if target_lang == "ru":
         return "Translate into Russian. Output ONLY the translation.\n\n" + text
@@ -141,7 +171,7 @@ async def call_ai(text, target_lang):
             messages=[{"role": "user", "content": CHECK_PROMPT + translation}],
         )
         result = check_response.content[0].text
-        result = result.replace("o'", "o\u02BB").replace("O'", "O\u02BB").replace("g'", "g\u02BB").replace("G'", "G\u02BB")
+        result = fix_uzbek_text(result)
         return result
     except Exception as exc:
         logger.error("API error: %s", exc)
