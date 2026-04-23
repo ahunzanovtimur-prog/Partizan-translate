@@ -114,12 +114,13 @@ CHECK_PROMPT = (
 
 
 def restore_numbers(original, translation):
-    orig_numbers = re.findall(r'\d[\d\s\.\,\-\+]*\d|\d+', original)
-    trans_numbers = re.findall(r'\d[\d\s\.\,\-\+]*\d|\d+', translation)
-    if len(orig_numbers) == len(trans_numbers):
-        for orig_num, trans_num in zip(orig_numbers, trans_numbers):
-            if orig_num != trans_num:
-                translation = translation.replace(trans_num, orig_num, 1)
+    orig_numbers = set(re.findall(r'\d+', original))
+    trans_numbers = set(re.findall(r'\d+', translation))
+    missing = orig_numbers - trans_numbers
+    extra = trans_numbers - orig_numbers
+    if missing and extra:
+        for miss, ext in zip(sorted(missing, key=len, reverse=True), sorted(extra, key=len, reverse=True)):
+            translation = translation.replace(ext, miss, 1)
     return translation
 
 
