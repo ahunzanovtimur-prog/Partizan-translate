@@ -63,7 +63,7 @@ SYSTEM_PROMPT = (
     "5. NEVER add or remove information - translate EXACTLY what is written\n"
     "6. Copy ALL emojis from the original text into the exact same positions in the translation\n"
     "7. Keep the same paragraph structure and line breaks as the original\n"
-    "8. Output plain text only - no HTML tags, no markdown\n"
+    "8. Preserve HTML tags from original: <b>, <i>, <blockquote> etc. Keep them exactly as in the original.\n"
     "9. Every emoji from original MUST appear in translation in the same position\n\n"
 
     "TRANSLATION RULES:\n"
@@ -359,7 +359,7 @@ async def handle_message(update, ctx):
     ):
         return
 
-    original_text = message.reply_to_message.text or ""
+    original_text = message.reply_to_message.text_html or ""
 
     if not original_text.strip():
         await message.reply_text("Matn topilmadi")
@@ -391,7 +391,7 @@ async def handle_message(update, ctx):
         kwargs = {}
         if i == len(chunks) - 1:
             kwargs["reply_markup"] = after_translate_keyboard()
-        await message.reply_text(chunk, **kwargs)
+        await message.reply_text(chunk, parse_mode="HTML", **kwargs)
 
     ctx.user_data["last_text"] = original_text
 
