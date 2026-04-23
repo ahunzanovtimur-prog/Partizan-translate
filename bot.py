@@ -1,6 +1,7 @@
 import os
 import logging
 import tempfile
+import re
 
 from telegram import (
     Update,
@@ -53,73 +54,65 @@ def set_user_lang(user_id, lang_code):
 SYSTEM_PROMPT = (
     "You are a professional translator and editor with PhD-level expertise in modern Uzbek language. "
     "You specialize in university, press-release, and SMM content.\n\n"
-    "YOUR TASK:\n"
-    "- Translate text between Uzbek, Russian, and English\n"
-    "- Use ONLY modern literary Uzbek (2020+ standard)\n"
-    "- Preserve original meaning exactly\n\n"
-    "STRICT RULES:\n"
-    "1. DO NOT change names: brands, universities, names, surnames\n"
-    "2. Russian text: fix only obvious errors\n"
-    "3. Uzbek text: fix grammar, remove Russian-style phrasing, make native\n"
-    "4. DO NOT add new information or shorten meaning\n"
-    "5. DO NOT write explanations\n"
-    "6. Preserve all emojis exactly\n"
-    "7. DO NOT output any HTML tags like <b>, <i>, <a> etc\n"
-    "8. Output plain text only\n\n"
+
+    "ABSOLUTE RULES - NEVER BREAK THESE:\n"
+    "1. NEVER change any numbers, dates, years, prices, percentages, phone numbers\n"
+    "2. NEVER change product names: iPhone 17 stays iPhone 17, NOT iPhone 15 or iPhone 16\n"
+    "3. NEVER change brand names, university names, person names, surnames\n"
+    "4. NEVER change URLs, links, email addresses\n"
+    "5. NEVER add or remove information - translate EXACTLY what is written\n"
+    "6. Preserve ALL emojis exactly as they appear in the original\n"
+    "7. Keep the same paragraph structure and line breaks as the original\n"
+    "8. Output plain text only - no HTML tags, no markdown\n\n"
+
+    "TRANSLATION RULES:\n"
+    "- Russian to Uzbek: translate to modern literary Uzbek Latin script\n"
+    "- Uzbek to Russian: translate to correct Russian\n"
+    "- English to Russian: translate to correct Russian\n"
+    "- Fix only obvious errors in the target language\n"
+    "- DO NOT rewrite or rephrase the source language text\n\n"
+
     "STYLE: official, press-release / SMM / university, clean, modern, confident\n\n"
-    "MODERN UZBEK RULES:\n"
-    "- Use ONLY modern Uzbek Latin script with correct apostrophes\n"
+
+    "MODERN UZBEK LANGUAGE RULES:\n"
+    "- Use ONLY modern Uzbek Latin script (2020+ standard)\n"
+    "- Correct apostrophes: o' and g' are mandatory\n"
     "- 'doim' -> 'doimo'\n"
-    "- 'tabriklaymiz' -> 'tabriklaydi' (when organization congratulates, use 3rd person)\n"
-    "- 'uy' -> 'xonadon' (in congratulations)\n"
-    "- Numbers with postpositions: 31-maygacha, 5-kursga, 10-martdan (with hyphen)\n"
+    "- 'tabriklaymiz' -> 'tabriklaydi' (when organization congratulates, 3rd person)\n"
+    "- 'uy' -> 'xonadon' (in congratulations context)\n"
+    "- Numbers with postpositions use hyphen: 31-maygacha, 5-kursga, 10-martdan\n"
     "- 'tejash/ekonomiya' -> 'foyda' in marketing context\n"
     "- 'real' -> 'haqiqiy' or 'amaliy'\n"
     "- 'keys/kejs' -> 'holat' or 'misol'\n"
-    "- 'kontakt' -> 'aloqa', 'format' -> 'shakl', 'prezentatsiya' -> 'taqdimot'\n"
+    "- 'kontakt' -> 'aloqa'\n"
+    "- 'prezentatsiya' -> 'taqdimot'\n"
     "- Prefer native Uzbek words over borrowed Russian/English words\n"
-    "- Think like a native Uzbek copywriter, not a translator\n\n"
-    "OUTDATED WORDS TO AVOID:\n"
-    "- 'mashg\\'ulot' -> 'dars' or 'trening' (context dependent)\n"
-    "- 'faoliyat yuritmoq' -> 'ish olib bormoq' or 'faollik ko\\'rsatmoq'\n"
-    "- 'amalga oshirmoq' -> 'bajarmoq' or 'hayotga tatbiq etmoq'\n"
-    "- 'ko\\'rsatma' -> 'yo\\'riqnoma' or 'ko\\'rsatmalar'\n"
-    "- 'muassasa' -> 'tashkilot' or 'universitet'\n"
-    "- 'xodim' -> 'xodimlar' only when plural, singular: 'hodim'\n"
-    "- 'ma\\'ruza' -> 'ma\\'ruza' is fine for lectures, but 'taqdimot' for presentations\n"
-    "- 'tajriba' -> keep, but 'amaliyot' for practical experience\n"
-    "- Avoid Soviet-era bureaucratic Uzbek, use modern journalistic style\n"
-    "- Use short, clear sentences for SMM content\n"
-    "- Avoid passive voice: 'amalga oshirildi' -> 'o\\'tkazildi' or 'bo\\'lib o\\'tdi'\n"
-    "- 'ishtirok etish' -> 'qatnashish' (more natural)\n"
-    "- 'ta\\'minlash' -> 'yaratish' or 'ko\\'rsatish' (context dependent)\n"
-    "- 'rivojlantirish' is fine, but avoid overuse\n\n"
+    "- 'amalga oshirildi' -> 'o\\'tkazildi' or 'bo\\'lib o\\'tdi'\n"
+    "- 'ishtirok etish' -> 'qatnashish'\n"
+    "- Avoid Soviet-era bureaucratic style, use modern journalistic Uzbek\n"
+    "- Think like a native Uzbek copywriter, not a literal translator\n\n"
+
     "EXAMPLES:\n\n"
     "Input: TIUE sizni bayram bilan tabriklaymiz\n"
     "Output: TIUE sizni bayram bilan tabriklaydi\n\n"
-    "Input: Talabalar doim yaxshi natijalar ko\\'rsatishdi\n"
-    "Output: Talabalar doimo yaxshi natijalar ko\\'rsatishdi\n\n"
-    "Input: Tadbirda ko\\'plab talabalar ishtirok etishdi\n"
-    "Output: Tadbirda ko\\'plab talabalar qatnashishdi\n\n"
+    "Input: Tadbirda ko'plab talabalar ishtirok etishdi\n"
+    "Output: Tadbirda ko'plab talabalar qatnashishdi\n\n"
     "Input: Universitetda master-klass amalga oshirildi\n"
-    "Output: Universitetda master-klass o\\'tkazildi\n\n"
-    "OUTPUT: ONLY the translated text, NO notes, NO comments, plain text only."
+    "Output: Universitetda master-klass o'tkazildi\n\n"
+
+    "OUTPUT: ONLY the translated text. NO notes. NO comments. NO explanations. Plain text with emojis preserved."
 )
 
 CHECK_PROMPT = (
-    "You are a proofreader for academic and official texts. "
-    "Check the following translation and fix ANY errors:\n"
-    "- Fix spelling mistakes\n"
-    "- Fix grammar errors\n"
-    "- If Uzbek Latin: no Cyrillic letters mixed in, apostrophes in o\\' and g\\' correct\n"
-    "- If Russian: no Latin letters mixed in\n"
-    "- Apply Uzbek-specific fixes: doim->doimo, tabriklaymiz->tabriklaydi (for orgs), uy->xonadon (congrats)\n"
-    "- Fix punctuation\n\n"
-    "Output ONLY the corrected text. If perfect, output unchanged. NO comments.\n\n"
+    "You are a proofreader. Check this translation and fix ONLY spelling and grammar errors.\n"
+    "CRITICAL: DO NOT change any numbers, dates, years, product names, brand names, person names, URLs, emojis.\n"
+    "If Uzbek Latin: fix apostrophes in o' and g', remove any stray Cyrillic letters.\n"
+    "If Russian: fix any stray Latin letters.\n"
+    "Output ONLY the corrected text. If already perfect, output unchanged. NO comments.\n\n"
 )
 
+
 def fix_uzbek_text(text):
-    # Fix Turkish characters to Uzbek
     replacements = {
         "\u015f": "sh", "\u015e": "Sh",
         "\u00e7": "ch", "\u00c7": "Ch",
@@ -131,27 +124,26 @@ def fix_uzbek_text(text):
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    # Check if Uzbek text has Cyrillic mixed in - remove stray Cyrillic
-    import re
     lines = text.split("\n")
     cleaned = []
     for line in lines:
         latin_count = len(re.findall(r'[a-zA-Z]', line))
         cyrillic_count = len(re.findall(r'[\u0400-\u04FF]', line))
-        # If line is mostly Latin but has some Cyrillic, it is a bug
         if latin_count > 0 and cyrillic_count > 0 and latin_count > cyrillic_count:
             line = re.sub(r'[\u0400-\u04FF]+', '', line)
         cleaned.append(line)
     return "\n".join(cleaned)
+
+
 def build_translate_prompt(text, target_lang):
     if target_lang == "ru":
-        return "Translate into Russian. Output ONLY the translation.\n\n" + text
+        return "Translate into Russian. Keep all numbers, dates, names, emojis exactly as they are. Output ONLY the translation.\n\n" + text
     elif target_lang == "uz":
-        return "Translate into Uzbek Latin. Output ONLY the translation.\n\n" + text
+        return "Translate into modern Uzbek Latin. Keep all numbers, dates, names, emojis exactly as they are. Output ONLY the translation.\n\n" + text
     elif target_lang == "en":
-        return "Translate into English. Output ONLY the translation.\n\n" + text
+        return "Translate into English. Keep all numbers, dates, names, emojis exactly as they are. Output ONLY the translation.\n\n" + text
     else:
-        return "Translate into Russian. Output ONLY the translation.\n\n" + text
+        return "Translate into Russian. Keep all numbers, dates, names, emojis exactly as they are. Output ONLY the translation.\n\n" + text
 
 
 async def call_ai(text, target_lang):
@@ -173,11 +165,10 @@ async def call_ai(text, target_lang):
             messages=[{"role": "user", "content": CHECK_PROMPT + translation}],
         )
         result = check_response.content[0].text
-        # Convert Markdown bold to HTML bold
-        import re
-        translation = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', translation)
-        translation = re.sub(r'__(.+?)__', r'<i>\1</i>', translation)
-        result = fix_uzbek_text(result)
+
+        if target_lang == "uz":
+            result = fix_uzbek_text(result)
+
         return result
     except Exception as exc:
         logger.error("API error: %s", exc)
@@ -214,6 +205,7 @@ async def transcribe_voice(file_path):
                 model="whisper-large-v3",
                 file=audio_file,
                 language="uz",
+                prompt="Bu o'zbek tilida suhbat. O'zbekiston, Toshkent, universitet, talabalar.",
             )
         return transcription.text
     except Exception as exc:
@@ -266,8 +258,8 @@ async def cmd_start(update, ctx):
         "\u2022 Hujjat yuboring (PDF, Word)\n"
         "  \u2014 avtomatik tarjima qiladi\n\n"
         "\u2022 Ovozli xabar yuboring\n"
-        "  \u2014 matnga o'giradi va tarjima qiladi\n\n"
-        "Tillar: O'zbekcha \u2194 Ruscha \u2194 English\n\n"
+        "  \u2014 matnga o\u02BBgiradi va tarjima qiladi\n\n"
+        "Tillar: O\u02BBzbekcha \u2194 Ruscha \u2194 English\n\n"
         "Buyruqlar:\n"
         "/start \u2014 boshlash\n"
         "/reset \u2014 avto-rejim",
@@ -296,7 +288,7 @@ async def handle_message(update, ctx):
 
     original_text = message.reply_to_message.text or ""
 
-    if not original_text:
+    if not original_text.strip():
         await message.reply_text("Matn topilmadi")
         return
 
@@ -326,10 +318,9 @@ async def handle_message(update, ctx):
         kwargs = {}
         if i == len(chunks) - 1:
             kwargs["reply_markup"] = after_translate_keyboard()
-        await message.reply_text(chunk, parse_mode="HTML", **kwargs)
+        await message.reply_text(chunk, **kwargs)
 
     ctx.user_data["last_text"] = original_text
-    ctx.user_data["last_detected"] = detected
 
 
 async def handle_voice(update, ctx):
@@ -351,7 +342,7 @@ async def handle_voice(update, ctx):
         transcription = await transcribe_voice(tmp_path)
 
         if not transcription:
-            await message.reply_text("Ovozni aniqlab bo'lmadi / Ne udalos raspoznat golos")
+            await message.reply_text("Ovozni aniqlab bo\u02BBlmadi / Ne udalos raspoznat golos")
             return
 
         detected = await detect_language(transcription)
@@ -401,8 +392,7 @@ async def handle_document(update, ctx):
 
     if file_ext not in ("pdf", "docx", "doc", "txt"):
         await message.reply_text(
-            "Qo'llab-quvvatlanadigan formatlar: PDF, DOCX, TXT\n"
-            "Podderzhivayemye formaty: PDF, DOCX, TXT"
+            "Qo\u02BBllab-quvvatlanadigan formatlar: PDF, DOCX, TXT"
         )
         return
 
@@ -426,9 +416,7 @@ async def handle_document(update, ctx):
             text = None
 
         if not text:
-            await message.reply_text(
-                "Matnni ajratib bo'lmadi / Ne udalos izvlech tekst"
-            )
+            await message.reply_text("Matnni ajratib bo\u02BBlmadi / Ne udalos izvlech tekst")
             return
 
         if len(text) > 15000:
